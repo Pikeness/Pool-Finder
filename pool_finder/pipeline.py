@@ -22,7 +22,7 @@ from pool_finder.naip_fetch import fetch_naip_tiles
 from pool_finder.detect import detect_pools_in_tile
 
 
-def run_pipeline(town: str, out_dir: str = "pool_leads", max_tiles: int = 20,
+def run_pipeline(town: str, out_dir: str = "pool_leads", max_tiles: int = 6,
                   progress=None) -> list:
     """
     Runs the free pipeline: geocode town -> download NAIP imagery ->
@@ -50,7 +50,7 @@ def run_pipeline(town: str, out_dir: str = "pool_leads", max_tiles: int = 20,
     log(f"Found: {place['display_name']}")
 
     log("Downloading free NAIP aerial imagery (this can take a few minutes)...")
-    tif_paths = fetch_naip_tiles(place, tiles_dir, max_tiles=max_tiles)
+    tif_paths = fetch_naip_tiles(place, tiles_dir, max_tiles=max_tiles, progress=progress)
     log(f"Downloaded {len(tif_paths)} imagery tile(s).")
 
     raw_candidates = []

@@ -21,9 +21,10 @@ import requests
 OPEN_METEO_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
 # How far out from the town's center point to search, in kilometers.
-# A bigger town may need more; extra area just means a few more NAIP
-# tiles get downloaded, so err on the generous side.
-DEFAULT_RADIUS_KM = 6.0
+# Kept fairly small by default since each NAIP tile is 100-300MB --
+# a bigger radius means a bigger (and slower) first download. You can
+# widen this later once you've confirmed everything works.
+DEFAULT_RADIUS_KM = 3.0
 
 
 def geocode_town(town_query: str, radius_km: float = DEFAULT_RADIUS_KM) -> dict:
