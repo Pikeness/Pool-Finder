@@ -17,7 +17,9 @@ at all, see "Building an executable" in README.md.
 import csv
 import os
 import queue
+import sys
 import threading
+import traceback
 import tkinter as tk
 import webbrowser
 from tkinter import ttk, messagebox
@@ -25,6 +27,33 @@ from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 
 from pool_finder.pipeline import run_pipeline
+
+
+class _NullWriter:
+    """
+    A safe stand-in for stdout/stderr.
+
+    PyInstaller's --windowed build mode (no console window) sets
+    sys.stdout and sys.stderr to None. If any code -- including
+    Tkinter's own built-in error reporting, or a library like rasterio
+    that occasionally prints warnings -- tries to write to them, it
+    raises 'AttributeError: NoneType object has no attribute write'.
+    That secondary crash can happen *inside* the error-reporting path
+    itself, which means the ORIGINAL error silently vanishes and the
+    app just looks frozen with zero clues. Installing this prevents
+    that entire failure mode.
+    """
+    def write(self, *args, **kwargs):
+        pass
+
+    def flush(self):
+        pass
+
+
+if sys.stdout is None:
+    sys.stdout = _NullWriter()
+if sys.stderr is None:
+    sys.stderr = _NullWriter()
 
 
 class PoolFinderApp:
@@ -126,6 +155,13 @@ class PoolFinderApp:
     # ---------- Actions ----------
 
     def _on_run(self):
+        try:
+            self._start_run()
+        except Exception:
+            messagebox.showerror("Error starting search", traceback.format_exc())
+            self.run_button.config(state="normal")
+
+    def _start_run(self):
         town = self.town_entry.get().strip()
         if not town:
             messagebox.showwarning("Missing town", "Please enter a town name.")
@@ -261,6 +297,17 @@ class PoolFinderApp:
 
 def main():
     root = tk.Tk()
+
+    def show_uncaught_error(exc, val, tb):
+        # Without this override, Tkinter's default handler tries to
+        # print the traceback to stderr -- which is None in a
+        # --windowed build, silently swallowing the real error. This
+        # makes any unexpected crash visible as a popup instead.
+        err_text = "".join(traceback.format_exception(exc, val, tb))
+        messagebox.showerror("Unexpected error", err_text)
+
+    root.report_callback_exception = show_uncaught_error
+
     PoolFinderApp(root)
     root.mainloop()
 
