@@ -1,0 +1,38 @@
+name: Build Windows executable
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Build the .exe with PyInstaller
+        run: >
+          pyinstaller --onefile --windowed --name PoolLeadFinder
+          --hidden-import PIL._tkinter_finder
+          --collect-all rasterio
+          --collect-all fiona
+          --collect-data rasterio
+          gui_app.py
+
+      - name: Upload the .exe as a downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PoolLeadFinder-windows
+          path: dist/PoolLeadFinder.exe
