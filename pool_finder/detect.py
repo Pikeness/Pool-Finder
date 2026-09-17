@@ -81,10 +81,18 @@ def detect_pools_in_tile(tif_path: str, tile_size: int = 1024,
                 bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
                 hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-                # Blue/cyan pool-water range. Tune these if you get too
-                # many false positives/negatives for your area's imagery.
-                lower = np.array([85, 60, 60])
-                upper = np.array([130, 255, 255])
+                # Blue/cyan pool-water range. Real pool water is
+                # distinctly bright and vividly colored -- it reflects
+                # open sky. That's the key property that separates it
+                # from the most common false positives:
+                #   - shadow/tree canopy: similar hue, but DARK (low V)
+                #   - metal roofing/HVAC units: often bluish-grey, but
+                #     low-saturation (near-grey, not vivid) (low S)
+                #   - roads/pavement markings: also low-saturation
+                # Raising the saturation and brightness floors filters
+                # out most of these while still catching real water.
+                lower = np.array([85, 90, 130])
+                upper = np.array([128, 255, 255])
                 mask = cv2.inRange(hsv, lower, upper)
 
                 mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
@@ -113,6 +121,30 @@ def detect_pools_in_tile(tif_path: str, tile_size: int = 1024,
                     fill_ratio = area / rect_area if rect_area else 0
                     if fill_ratio < 0.4:
                         continue  # too irregular a shape
+
+                    # Solidity: how much of the shape's convex hull it
+                    # actually fills. Water settles into simple, convex
+                    # shapes (roughly rectangular or oval); shadow
+                    # patches breaking through tree canopy tend to be
+                    # more jagged/concave.
+                    hull = cv2.convexHull(c)
+                    hull_area = cv2.contourArea(hull)
+                    solidity = area / hull_area if hull_area else 0
+                    if solidity < 0.85:
+                        continue
+
+                    # Uniformity: real water is visually smooth --
+                    # brightness barely varies pixel-to-pixel across
+                    # its surface. Shadowed foliage (dappled light
+                    # through leaves) and glinting metal (HVAC units,
+                    # roofing) both vary much more within the same
+                    # small area. This is checked on the *brightness*
+                    # (V) channel, inside just this shape's own mask.
+                    shape_mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+                    cv2.drawContours(shape_mask, [c], -1, 255, thickness=cv2.FILLED)
+                    v_values = hsv[:, :, 2][shape_mask == 255]
+                    if v_values.size == 0 or float(np.std(v_values)) > 20:
+                        continue
 
                     cx_local, cy_local = x + w / 2, y + h / 2
                     col = col0 + cx_local
