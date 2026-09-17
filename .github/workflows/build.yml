@@ -1,5 +1,7 @@
 name: Build Windows executable
 
+# Runs automatically whenever you push code, and also lets you trigger
+# it manually from the "Actions" tab with the "Run workflow" button.
 on:
   push:
     branches: [ main, master ]
@@ -7,6 +9,9 @@ on:
 
 jobs:
   build-windows:
+    # This is the key part: GitHub runs this job on an actual Windows
+    # machine in the cloud, so PyInstaller produces a real .exe -- you
+    # never need Windows, Python, or a terminal on your own computer.
     runs-on: windows-latest
 
     steps:
@@ -29,6 +34,7 @@ jobs:
           --collect-all rasterio
           --collect-all fiona
           --collect-data rasterio
+          --add-data "assets/logo.png;assets"
           gui_app.py
 
       - name: Upload the .exe as a downloadable artifact
