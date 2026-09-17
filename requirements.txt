@@ -1,0 +1,8 @@
+requests
+rasterio
+opencv-python-headless
+numpy
+pystac-client
+planetary-computer
+pillow
+pyinstaller
