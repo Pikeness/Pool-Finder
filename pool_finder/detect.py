@@ -19,12 +19,27 @@ you could plug in here instead).
 import cv2
 import numpy as np
 import rasterio
+from rasterio.warp import transform as warp_transform
 from rasterio.windows import Window
 
 
-def _pixel_to_lonlat(transform, col, row):
-    lon, lat = rasterio.transform.xy(transform, row, col)
-    return lon, lat
+def _pixel_to_lonlat(transform, crs, col, row):
+    """
+    Converts a pixel (col, row) into real GPS coordinates (WGS84
+    longitude/latitude -- the "40.9, -74.2" style coordinates that
+    Google Maps and everything else expects).
+
+    NAIP GeoTIFFs are stored in a projected coordinate system (UTM,
+    measured in meters), not plain lat/lon. rasterio.transform.xy()
+    only gets you as far as that native projection's coordinates
+    (e.g. "4531858, 565787" -- UTM easting/northing), which look
+    superficially like numbers but are NOT usable GPS coordinates.
+    This function does the required second step: reprojecting from
+    the image's native CRS into WGS84.
+    """
+    x, y = rasterio.transform.xy(transform, row, col)  # native CRS units (e.g. UTM meters)
+    lons, lats = warp_transform(crs, "EPSG:4326", [x], [y])
+    return lons[0], lats[0]
 
 
 def detect_pools_in_tile(tif_path: str, tile_size: int = 1024,
@@ -49,6 +64,7 @@ def detect_pools_in_tile(tif_path: str, tile_size: int = 1024,
     """
     with rasterio.open(tif_path) as src:
         transform = src.transform
+        crs = src.crs
         width, height = src.width, src.height
 
         for row0 in range(0, height, tile_size):
@@ -101,7 +117,7 @@ def detect_pools_in_tile(tif_path: str, tile_size: int = 1024,
                     cx_local, cy_local = x + w / 2, y + h / 2
                     col = col0 + cx_local
                     row = row0 + cy_local
-                    lon, lat = _pixel_to_lonlat(transform, col, row)
+                    lon, lat = _pixel_to_lonlat(transform, crs, col, row)
 
                     pad = 15
                     y0, y1 = max(0, y - pad), min(bgr.shape[0], y + h + pad)
