@@ -28,13 +28,24 @@ def _pixel_to_lonlat(transform, col, row):
 
 
 def detect_pools_in_tile(tif_path: str, tile_size: int = 1024,
-                          min_area_px: int = 15, max_area_px: int = 4000):
+                          min_area_px: int = 30, max_area_px: int = 1500,
+                          max_candidates_per_chunk: int = 15):
     """
     Scans a NAIP GeoTIFF for pool-like blobs.
 
     Yields dicts: {lon, lat, confidence, pixel_area, crop, source_tile}
     for each candidate found. `crop` is a small BGR numpy image you can
     save as a thumbnail for manual review.
+
+    max_candidates_per_chunk guards against a specific failure mode:
+    a natural water body (a lake, reservoir, or river) is a large,
+    contiguous blue area, but JPEG-style compression noise can fragment
+    it into hundreds or thousands of small "pool-sized" speckles in a
+    single 1024x1024 chunk. That's not one ambiguous shape you'd want
+    to keep and manually check -- it's a strong signal the whole chunk
+    is dominated by open water, not a residential yard, so the entire
+    chunk's candidates are discarded rather than flooding the results
+    with an unusable number of false positives.
     """
     with rasterio.open(tif_path) as src:
         transform = src.transform
@@ -61,11 +72,17 @@ def detect_pools_in_tile(tif_path: str, tile_size: int = 1024,
                 mask = cv2.inRange(hsv, lower, upper)
 
                 mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+                # A larger closing kernel merges nearby speckles from a
+                # single noisy water surface into one contiguous blob
+                # (which then correctly gets rejected by max_area_px)
+                # instead of leaving them as hundreds of separate
+                # "pool-sized" fragments.
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
 
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                                 cv2.CHAIN_APPROX_SIMPLE)
 
+                chunk_candidates = []
                 for c in contours:
                     area = cv2.contourArea(c)
                     if area < min_area_px or area > max_area_px:
@@ -93,11 +110,22 @@ def detect_pools_in_tile(tif_path: str, tile_size: int = 1024,
 
                     confidence = round(min(1.0, fill_ratio) * min(1.0, area / 200), 2)
 
-                    yield {
+                    chunk_candidates.append({
                         "lon": lon,
                         "lat": lat,
                         "pixel_area": area,
                         "confidence": confidence,
                         "crop": crop,
                         "source_tile": tif_path,
-                    }
+                    })
+
+                # A real residential chunk has at most a handful of
+                # pools; a chunk full of dozens of "candidates" is a
+                # strong sign it's actually a lake/reservoir/river
+                # fragmenting into noise, not a neighborhood -- discard
+                # the whole chunk rather than keep the speckles.
+                if len(chunk_candidates) > max_candidates_per_chunk:
+                    continue
+
+                for cand in chunk_candidates:
+                    yield cand
