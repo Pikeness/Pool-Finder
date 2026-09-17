@@ -174,7 +174,9 @@ class PoolFinderApp:
         self.confirmed = {}
         self.current_id = None
         self.image_label.config(image="", text="Select a candidate to preview it here.")
-        self.address_label.config(text="")
+        self.addresses = {}
+        self.address_entry.delete(0, tk.END)
+        self.confirmed_var.set(False)
         self.confidence_label.config(text="")
         self.status_label.config(text="Running... this can take several minutes.")
         self._log_clear()
