@@ -151,7 +151,11 @@ def detect_pools_in_tile(tif_path: str, tile_size: int = 1024,
                     row = row0 + cy_local
                     lon, lat = _pixel_to_lonlat(transform, crs, col, row)
 
-                    pad = 15
+                    # More context around the detected shape makes for
+                    # a much more useful thumbnail -- enough padding to
+                    # see the surrounding yard/patio, not just the blob
+                    # itself pressed against the crop edges.
+                    pad = 40
                     y0, y1 = max(0, y - pad), min(bgr.shape[0], y + h + pad)
                     x0, x1 = max(0, x - pad), min(bgr.shape[1], x + w + pad)
                     crop = bgr[y0:y1, x0:x1].copy()
