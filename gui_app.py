@@ -237,6 +237,24 @@ class PoolFinderApp:
                                  highlightthickness=1, highlightbackground="#B9DCEC")
         self.log_text.pack(fill="both", expand=True)
 
+    def _load_scaled_photo(self, path, box_size):
+        """
+        Loads an image and scales it to fill a box_size x box_size
+        square (preserving aspect ratio), scaling UP as well as down.
+
+        This matters specifically for the detection thumbnails: each
+        one is a tight crop around a small detected shape, often just
+        a few dozen pixels across. PIL's plain thumbnail() only ever
+        shrinks an image, so a tiny crop stayed tiny no matter how
+        large the display box was. This scales in both directions so
+        small crops are actually visible.
+        """
+        img = Image.open(path)
+        scale = box_size / max(img.width, img.height)
+        new_size = (max(1, int(img.width * scale)), max(1, int(img.height * scale)))
+        img = img.resize(new_size, Image.LANCZOS)
+        return ImageTk.PhotoImage(img)
+
     def _show_placeholder_logo(self):
         try:
             if self.logo_placeholder is None:
@@ -416,9 +434,7 @@ class PoolFinderApp:
         self.address_entry.insert(0, self.addresses.get(r["id"], ""))
 
         if os.path.exists(r["thumbnail_path"]):
-            img = Image.open(r["thumbnail_path"])
-            img.thumbnail((520, 520))
-            self.photo_cache = ImageTk.PhotoImage(img)
+            self.photo_cache = self._load_scaled_photo(r["thumbnail_path"], 480)
             self.image_label.config(image=self.photo_cache, text="")
         else:
             self.image_label.config(image="", text="Thumbnail not found.")
