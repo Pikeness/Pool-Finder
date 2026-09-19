@@ -23,7 +23,7 @@ import threading
 import traceback
 import tkinter as tk
 import webbrowser
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 from PIL import Image, ImageTk
 
@@ -159,6 +159,11 @@ class PoolFinderApp:
 
         self.run_button = ttk.Button(search, text="Find Pools", command=self._on_run)
         self.run_button.pack(side="left", padx=5)
+
+        self.load_button = ttk.Button(
+            search, text="Load Existing Search...", command=self._on_load_existing
+        )
+        self.load_button.pack(side="left", padx=5)
 
         self.status_label = ttk.Label(search, text="Ready.")
         self.status_label.pack(side="left", padx=10)
@@ -301,6 +306,65 @@ class PoolFinderApp:
 
         thread = threading.Thread(target=self._run_pipeline_thread, args=(town, out_dir), daemon=True)
         thread.start()
+
+    def _on_load_existing(self):
+        folder = filedialog.askdirectory(
+            title="Select a previous search folder (e.g. pool_leads_wayne_nj)"
+        )
+        if not folder:
+            return  # user cancelled
+
+        csv_path = os.path.join(folder, "candidates.csv")
+        if not os.path.exists(csv_path):
+            messagebox.showerror(
+                "Not a search folder",
+                f"No candidates.csv found in:\n{folder}\n\n"
+                "Make sure you selected a pool_leads_... folder created by "
+                "a previous 'Find Pools' search."
+            )
+            return
+
+        try:
+            results = []
+            with open(csv_path, newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    thumb_file = row.get("thumbnail_file", "")
+                    results.append({
+                        "id": int(row["id"]),
+                        "lat": float(row["lat"]),
+                        "lon": float(row["lon"]),
+                        "confidence": float(row["confidence"]),
+                        "maps_url": row.get("google_maps_link", ""),
+                        "thumbnail_path": os.path.join(folder, "thumbnails", thumb_file),
+                    })
+        except Exception:
+            messagebox.showerror("Error loading search", traceback.format_exc())
+            return
+
+        if not results:
+            messagebox.showinfo("Empty search", "That folder's candidates.csv has no rows.")
+            return
+
+        self.current_out_dir = folder
+        self.results = sorted(results, key=lambda r: r["confidence"], reverse=True)
+        self.confirmed = {r["id"]: False for r in self.results}
+        self.addresses = {}
+        self._load_progress()  # restores any previously confirmed/addressed candidates
+
+        self.current_id = None
+        self._show_placeholder_logo()
+        self.address_entry.delete(0, tk.END)
+        self.confirmed_var.set(False)
+        self.confidence_label.config(text="")
+
+        self.town_entry.delete(0, tk.END)
+        self.town_entry.insert(0, os.path.basename(folder))
+
+        self._populate_list()
+        self._update_confirmed_count()
+        self.status_label.config(text=f"Loaded {len(self.results)} candidate(s) from a previous search.")
+        self.export_button.config(state="normal")
 
     def _run_pipeline_thread(self, town, out_dir):
         try:
