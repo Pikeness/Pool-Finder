@@ -57,6 +57,17 @@ def run_pipeline(town: str, out_dir: str = "pool_leads", max_tiles: int = 6,
     for i, tif_path in enumerate(tif_paths):
         log(f"Scanning tile {i + 1}/{len(tif_paths)} for pools...")
         for cand in detect_pools_in_tile(tif_path):
+            # NAIP tiles are much larger than our search box (often
+            # 5-7km per side), and we download any tile that even
+            # partly overlaps the area you searched. Without this
+            # check, a downloaded tile's far edge -- which can sit
+            # well inside a neighboring town -- gets scanned and
+            # included right alongside real results for your town.
+            # This keeps only the candidates actually inside the area
+            # you searched.
+            if not (place["south"] <= cand["lat"] <= place["north"]
+                    and place["west"] <= cand["lon"] <= place["east"]):
+                continue
             raw_candidates.append(cand)
 
     log(f"Found {len(raw_candidates)} candidate pool(s). Saving thumbnails...")
